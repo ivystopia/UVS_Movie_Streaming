@@ -19,8 +19,8 @@ cache_dirname = "cache"
 # Cache filename used for the default countdown duration at the default resolution.
 countdown_filename = "5min_countdown_1fps.mkv"
 
-# User-supplied SVG background used when generating countdown videos.
-countdown_background_svg = "background.svg"
+# User-supplied background image used when generating countdown videos.
+countdown_background = "background.svg"
 
 # Default countdown video resolution in WIDTHxHEIGHT format.
 countdown_resolution = "1920x1080"

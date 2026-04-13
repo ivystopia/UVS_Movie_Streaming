@@ -83,7 +83,7 @@ class Config:
     static_dirname: str
     cache_dirname: str
     countdown_filename: str
-    countdown_background_svg: str
+    countdown_background: str
     countdown_resolution: "VideoSize"
     wrapper_log: Path
     vlc_log: Path
@@ -112,7 +112,7 @@ class Config:
             static_dirname=require_str(files, "static_dirname"),
             cache_dirname=require_str(files, "cache_dirname"),
             countdown_filename=require_str(files, "countdown_filename"),
-            countdown_background_svg=require_str(files, "countdown_background_svg"),
+            countdown_background=require_str(files, "countdown_background"),
             countdown_resolution=parse_resolution(
                 require_str(files, "countdown_resolution"),
                 source="config key 'countdown_resolution'",
@@ -334,7 +334,7 @@ class MovieStreamScheduler:
         self.static_dir = self.script_dir / self.config.static_dirname
         self.cache_dir = self.script_dir / self.config.cache_dirname
         self.countdown_path = self.resolve_countdown_path()
-        self.background_svg_path = self.static_dir / self.config.countdown_background_svg
+        self.background_path = self.static_dir / self.config.countdown_background
         self.run_dir = Path(tempfile.mkdtemp(prefix=f"{APP_NAME}_"))
         self.playlist_path = self.run_dir / self._build_playlist_filename()
         self.logger = build_logger(self.config.wrapper_log)
@@ -404,10 +404,6 @@ class MovieStreamScheduler:
         if self.config.subtitle_track < 0:
             raise SchedulerError(
                 f"Subtitle track must be zero or greater: {self.config.subtitle_track}"
-            )
-        if not self.background_svg_path.is_file():
-            raise SchedulerError(
-                f"Countdown background SVG does not exist: {self.background_svg_path}"
             )
         require_executable(self.config.vlc_binary, label="VLC binary")
         require_executable(self.config.qdbus_binary, label="qdbus6 binary")
@@ -670,7 +666,7 @@ class MovieStreamScheduler:
             self.countdown_path,
             self.inputs.countdown_seconds,
             self.inputs.countdown_resolution,
-            self.background_svg_path,
+            self.background_path,
             self.inputs.music_path,
             allow_music_truncation=self.inputs.force_music_truncation,
             logger=self.logger,
@@ -1319,8 +1315,21 @@ def compute_render_plan(font_path: Path, resolution: VideoSize) -> CountdownRend
     return best_plan
 
 
-def render_background_frame(svg_path: Path, resolution: VideoSize) -> Image.Image:
+def render_background_frame(
+    background_path: Path,
+    resolution: VideoSize,
+    logger: logging.Logger,
+) -> Image.Image:
     # Rasterize once and reuse the same background for every frame in this countdown.
+    if not background_path.is_file():
+        warning = (
+            f"Countdown background file is missing: {background_path}. "
+            "Using a plain black background instead."
+        )
+        logger.warning(warning)
+        print(warning, file=sys.stderr)
+        return Image.new("RGBA", (resolution.width, resolution.height), "black")
+
     command = [
         FFMPEG_BINARY,
         "-y",
@@ -1328,7 +1337,7 @@ def render_background_frame(svg_path: Path, resolution: VideoSize) -> Image.Imag
         "-loglevel",
         "error",
         "-i",
-        str(svg_path),
+        str(background_path),
         "-frames:v",
         "1",
         "-vf",
@@ -1348,7 +1357,8 @@ def render_background_frame(svg_path: Path, resolution: VideoSize) -> Image.Imag
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", errors="replace").strip()
         raise SchedulerError(
-            f"Failed to rasterize countdown background SVG: {stderr or 'ffmpeg returned a non-zero exit code.'}"
+            "Failed to rasterize countdown background image: "
+            f"{stderr or 'ffmpeg returned a non-zero exit code.'}"
         )
 
     try:
@@ -1386,7 +1396,7 @@ def build_countdown_video(
     output_path: Path,
     countdown_seconds: int,
     resolution: VideoSize,
-    background_svg_path: Path,
+    background_path: Path,
     music_path: Path | None,
     *,
     allow_music_truncation: bool,
@@ -1401,7 +1411,7 @@ def build_countdown_video(
 
     font_path = resolve_font_path()
     plan = compute_render_plan(font_path, resolution)
-    background = render_background_frame(background_svg_path, resolution)
+    background = render_background_frame(background_path, resolution, logger)
     step_count = countdown_seconds + 1
     total_frames = step_count
     framerate = str(COUNTDOWN_TARGET_FPS)
@@ -1410,7 +1420,7 @@ def build_countdown_video(
     logger.info(
         "Rendering countdown video with %s over %s at %s fps (%s frames) to %s",
         FONT_FAMILY,
-        background_svg_path.name,
+        background_path.name,
         framerate,
         total_frames,
         output_path,

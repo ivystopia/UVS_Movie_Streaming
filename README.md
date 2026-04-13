@@ -19,7 +19,7 @@ At runtime the script:
 
 The current countdown generator uses:
 
-- a user-supplied `static/background.svg` background
+- a user-supplied background image such as `static/background.svg` or `static/background.png`
 - white fixed-slot `Comic Shanns Mono` digits with a black outline
 - separate `mm` and `ss` blocks, with no colon
 - one unique frame per visible countdown second
@@ -46,21 +46,23 @@ For local linting, the repo expects the virtualenv:
 
 ## Background asset
 
-The repository does not include a background SVG.
+The repository does not include a background image.
 
-Before using the scheduler, place your own licensed background file at:
+Before using the scheduler, place your own licensed background file in `static/` and point
+[config.toml](/home/ivy/Videos/UVS_Movie_Streaming/config.toml) at it. For example:
 
 ```bash
 static/background.svg
 ```
 
-That file is intentionally Git-ignored. The script will fail early if it is missing.
+The background file itself is intentionally Git-ignored. If the configured file is missing, the
+script prints a warning and falls back to a plain black background.
 
 ## Repo layout
 
 - [schedule_uvs_movie_stream.py](/home/ivy/Videos/UVS_Movie_Streaming/schedule_uvs_movie_stream.py): main entry point
 - [config.toml](/home/ivy/Videos/UVS_Movie_Streaming/config.toml): runtime defaults
-- [static](/home/ivy/Videos/UVS_Movie_Streaming/static): local source assets, including the user-supplied background SVG
+- [static](/home/ivy/Videos/UVS_Movie_Streaming/static): local source assets, including the user-supplied background image
 - cache: generated countdown videos, created on demand and ignored by Git
 - [lint.sh](/home/ivy/Videos/UVS_Movie_Streaming/lint.sh): local lint/type-check helper
 

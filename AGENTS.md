@@ -80,9 +80,9 @@ Source assets live in [static](/home/ivy/Videos/UVS_Movie_Streaming/static). Gen
 
 Current source asset expectations:
 
-- `static/background.svg` as a user-supplied local SVG asset
+- a user-supplied local background image under `static/`, configured via `files.countdown_background`
 
-The repository does not ship a background SVG. `static/background.svg` is intentionally Git-ignored and must be provided locally before countdown generation will work.
+The repository does not ship a background asset. `static/background.svg` is the default local path and is intentionally Git-ignored, but the filename is configurable in [config.toml](/home/ivy/Videos/UVS_Movie_Streaming/config.toml). If the configured file is missing, countdown generation falls back to a plain black background and emits a warning instead of failing.
 
 Current generator behavior:
 
@@ -123,7 +123,7 @@ Music behavior:
 - `files.static_dirname`
 - `files.cache_dirname`
 - `files.countdown_filename`
-- `files.countdown_background_svg`
+- `files.countdown_background`
 - `files.countdown_resolution`
 - `logging.wrapper_log`
 - `logging.vlc_log`
