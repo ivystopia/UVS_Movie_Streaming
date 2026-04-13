@@ -132,7 +132,7 @@ Music behavior:
 
 ## Tooling
 
-- [lint.sh](/home/ivy/Videos/UVS_Movie_Streaming/lint.sh) runs `py_compile`, `flake8`, and `pyright`
+- [lint.sh](/home/ivy/Videos/UVS_Movie_Streaming/lint.sh) runs `py_compile`, `flake8`, `mypy`, and `pyright`
 - the expected virtualenv is `~/.virtualenvs/uvs_movie_streaming`
 - [.flake8](/home/ivy/Videos/UVS_Movie_Streaming/.flake8) ignores `E501`
 
@@ -143,3 +143,4 @@ When repo behavior changes:
 - update this file so it reflects the current codebase
 - update [README.md](/home/ivy/Videos/UVS_Movie_Streaming/README.md) if user-facing behavior or examples changed
 - update `CONTEXT.md` only for high-context historical notes, benchmarks, and rationale
+- run [lint.sh](/home/ivy/Videos/UVS_Movie_Streaming/lint.sh) as the final step before considering the change finished

@@ -11,10 +11,16 @@ license = { file = "LICENSE" }
 dependencies = ["Pillow", "PyQt6"]
 
 [project.optional-dependencies]
-dev = ["flake8", "pyright"]
+dev = ["flake8", "mypy", "pyright"]
 
 [project.scripts]
 schedule_uvs_movie_stream = "schedule_uvs_movie_stream:main"
 
 [tool.setuptools]
 py-modules = ["schedule_uvs_movie_stream"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+check_untyped_defs = true
+files = ["schedule_uvs_movie_stream.py"]

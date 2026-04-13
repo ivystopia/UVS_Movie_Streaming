@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 VENV_BIN="${HOME}/.virtualenvs/uvs_movie_streaming/bin"
 PYTHON_BIN="${VENV_BIN}/python3"
 FLAKE8_BIN="${VENV_BIN}/flake8"
+MYPY_BIN="${VENV_BIN}/mypy"
 PYRIGHT_BIN="${VENV_BIN}/pyright"
 
 if [ ! -x "${PYTHON_BIN}" ]; then
@@ -19,6 +20,12 @@ if [ -x "${FLAKE8_BIN}" ]; then
     "${FLAKE8_BIN}" schedule_uvs_movie_stream.py
 else
     echo "flake8 not installed in ${VENV_BIN}; skipping"
+fi
+
+if [ -x "${MYPY_BIN}" ]; then
+    "${MYPY_BIN}" schedule_uvs_movie_stream.py
+else
+    echo "mypy not installed in ${VENV_BIN}; skipping"
 fi
 
 if [ -x "${PYRIGHT_BIN}" ]; then
