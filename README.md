@@ -20,7 +20,8 @@ At runtime the script:
 The current countdown generator uses:
 
 - a user-supplied background image such as `static/background.svg` or `static/background.png`
-- white fixed-slot `Comic Shanns Mono` digits with a black outline
+- a configurable font resolved via `fc-match`
+- white fixed-slot digits with a black outline
 - separate `mm` and `ss` blocks, with no colon
 - one unique frame per visible countdown second
 - `countdown_seconds + 1` frames at a literal `1 fps`
@@ -57,6 +58,9 @@ static/background.svg
 
 The background file itself is intentionally Git-ignored. If the configured file is missing, the
 script prints a warning and falls back to a plain black background.
+
+The countdown font is also configured in [config.toml](/home/ivy/Videos/UVS_Movie_Streaming/config.toml)
+via a font pattern such as `Comic Shanns Mono` or `DejaVu Sans Mono`.
 
 ## Repo layout
 

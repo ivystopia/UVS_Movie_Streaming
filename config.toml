@@ -25,6 +25,9 @@ countdown_background = "background.svg"
 # Default countdown video resolution in WIDTHxHEIGHT format.
 countdown_resolution = "1920x1080"
 
+# Font pattern resolved via fc-match for countdown digits.
+countdown_font = "Comic Shanns Mono"
+
 # Log file locations.
 [logging]
 

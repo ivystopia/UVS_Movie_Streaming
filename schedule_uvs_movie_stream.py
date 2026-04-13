@@ -69,7 +69,6 @@ REFERENCE_TEXT_STROKE_WIDTH = 10
 FFMPEG_BINARY = "ffmpeg"
 FFPROBE_BINARY = "ffprobe"
 FC_MATCH_BINARY = "fc-match"
-FONT_FAMILY = "Comic Shanns Mono"
 
 
 class SchedulerError(RuntimeError):
@@ -85,6 +84,7 @@ class Config:
     countdown_filename: str
     countdown_background: str
     countdown_resolution: "VideoSize"
+    countdown_font: str
     wrapper_log: Path
     vlc_log: Path
     vlc_binary: Path
@@ -118,6 +118,7 @@ class Config:
                 source="config key 'countdown_resolution'",
                 error_type=SchedulerError,
             ),
+            countdown_font=require_str(files, "countdown_font"),
             wrapper_log=Path(require_str(logging_cfg, "wrapper_log")).expanduser(),
             vlc_log=Path(require_str(logging_cfg, "vlc_log")).expanduser(),
             vlc_binary=Path(require_str(tools, "vlc_binary")).expanduser(),
@@ -667,6 +668,7 @@ class MovieStreamScheduler:
             self.inputs.countdown_seconds,
             self.inputs.countdown_resolution,
             self.background_path,
+            self.config.countdown_font,
             self.inputs.music_path,
             allow_music_truncation=self.inputs.force_music_truncation,
             logger=self.logger,
@@ -1074,9 +1076,9 @@ def build_music_cache_key(music_path: Path) -> str:
     return hashlib.sha256(fingerprint).hexdigest()[:12]
 
 
-def resolve_font_path() -> Path:
+def resolve_font_path(font_pattern: str) -> Path:
     result = subprocess.run(
-        [FC_MATCH_BINARY, "-f", "%{file}\n", FONT_FAMILY],
+        [FC_MATCH_BINARY, "-f", "%{file}\n", font_pattern],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -1085,7 +1087,7 @@ def resolve_font_path() -> Path:
     font_path = result.stdout.strip()
     if result.returncode != 0 or not font_path:
         raise SchedulerError(
-            f"Could not resolve the required font via {FC_MATCH_BINARY}: {FONT_FAMILY}"
+            f"Could not resolve the required font via {FC_MATCH_BINARY}: {font_pattern}"
         )
 
     path = Path(font_path)
@@ -1397,6 +1399,7 @@ def build_countdown_video(
     countdown_seconds: int,
     resolution: VideoSize,
     background_path: Path,
+    font_pattern: str,
     music_path: Path | None,
     *,
     allow_music_truncation: bool,
@@ -1409,7 +1412,7 @@ def build_countdown_video(
     if tmp_output.exists():
         tmp_output.unlink()
 
-    font_path = resolve_font_path()
+    font_path = resolve_font_path(font_pattern)
     plan = compute_render_plan(font_path, resolution)
     background = render_background_frame(background_path, resolution, logger)
     step_count = countdown_seconds + 1
@@ -1419,7 +1422,7 @@ def build_countdown_video(
 
     logger.info(
         "Rendering countdown video with %s over %s at %s fps (%s frames) to %s",
-        FONT_FAMILY,
+        font_pattern,
         background_path.name,
         framerate,
         total_frames,

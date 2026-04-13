@@ -88,7 +88,8 @@ Current generator behavior:
 
 - static background
 - no animated elements
-- white fixed-slot `Comic Shanns Mono` digits with black outline
+- configurable font resolved via `fc-match`
+- white fixed-slot digits with black outline
 - separate `mm` and `ss` blocks, no colon
 - `countdown_seconds + 1` frames at a literal `1 fps`
 - `libx264rgb -preset ultrafast -crf 0`
@@ -125,6 +126,7 @@ Music behavior:
 - `files.countdown_filename`
 - `files.countdown_background`
 - `files.countdown_resolution`
+- `files.countdown_font`
 - `logging.wrapper_log`
 - `logging.vlc_log`
 - `tools.vlc_binary`
