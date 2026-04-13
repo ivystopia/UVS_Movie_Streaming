@@ -1,0 +1,12 @@
+__pycache__/
+cache/
+CONTEXT.md
+static/background.svg
+build/
+dist/
+*.egg-info/
+.coverage
+.coverage.*
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

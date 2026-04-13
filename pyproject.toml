@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uvs-movie-stream"
+version = "1.0.0"
+description = "VLC scheduler for a countdown video followed by a feature film"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = ["Pillow", "PyQt6"]
+
+[project.optional-dependencies]
+dev = ["flake8", "pyright"]
+
+[project.scripts]
+schedule_uvs_movie_stream = "schedule_uvs_movie_stream:main"
+
+[tool.setuptools]
+py-modules = ["schedule_uvs_movie_stream"]

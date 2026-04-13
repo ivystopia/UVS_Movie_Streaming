@@ -1,0 +1,44 @@
+# Settings that affect when and how playback is started.
+[playback]
+
+# VLC target display name as reported to Qt on this desktop session.
+fullscreen_display = "DP-1"
+
+# VLC subtitle track number for the movie entry.
+subtitle_track = 1
+
+# Files the script reads or generates relative to its own directory.
+[files]
+
+# Directory that stores static media assets for the scheduler.
+static_dirname = "static"
+
+# Directory that stores generated countdown video cache files.
+cache_dirname = "cache"
+
+# Cache filename used for the default countdown duration at the default resolution.
+countdown_filename = "5min_countdown_1fps.mkv"
+
+# User-supplied SVG background used when generating countdown videos.
+countdown_background_svg = "background.svg"
+
+# Default countdown video resolution in WIDTHxHEIGHT format.
+countdown_resolution = "1920x1080"
+
+# Log file locations.
+[logging]
+
+# Wrapper log written by the Python scheduler.
+wrapper_log = "/tmp/uvs-movie-stream-wrapper.log"
+
+# VLC stdout/stderr log captured from the launched VLC process.
+vlc_log = "/tmp/uvs-movie-stream-vlc.log"
+
+# External binaries the script invokes.
+[tools]
+
+# Path to the VLC executable.
+vlc_binary = "/usr/bin/vlc"
+
+# Path to qdbus6 for MPRIS detection and playback control.
+qdbus_binary = "/usr/bin/qdbus6"
