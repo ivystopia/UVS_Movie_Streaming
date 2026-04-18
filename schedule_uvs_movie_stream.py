@@ -24,10 +24,6 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
-from PyQt6.QtCore import qInstallMessageHandler
-from PyQt6.QtGui import QGuiApplication
-
-
 APP_NAME = "uvs_movie_stream"
 VERSION = "1.0.0"
 MPRIS_SERVICE = "org.mpris.MediaPlayer2.vlc"
@@ -50,7 +46,6 @@ COUNTDOWN_RENDER_ESTIMATE_BASE_SECONDS = 1.5
 COUNTDOWN_RENDER_ESTIMATE_PER_SECOND = 0.0085
 COUNTDOWN_MUSIC_MUX_ALLOWANCE_SECONDS = 2
 COUNTDOWN_RENDER_SAFETY_MARGIN_SECONDS = 2
-COUNTDOWN_TARGET_FPS = 1
 DEFAULT_RESOLUTION = "1920x1080"
 COUNTDOWN_VIDEO_CODEC = "libx264rgb"
 COUNTDOWN_VIDEO_PRESET = "ultrafast"
@@ -148,6 +143,8 @@ class Inputs:
     music_path: Path | None
     regenerate_countdown_video: bool
     force_music_truncation: bool
+    minimum_prestart_window_seconds: int
+    actual_prestart_window_seconds: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,16 +155,6 @@ class VideoSize:
     @property
     def text(self) -> str:
         return f"{self.width}x{self.height}"
-
-
-@dataclass(frozen=True, slots=True)
-class Display:
-    index: int
-    name: str
-    x: int
-    y: int
-    width: int
-    height: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +181,12 @@ class CountdownAudioPlan:
     trim_start: float
     start_delay: float
     encoder: str
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleStreamInfo:
+    stream_index: int
+    language: str | None
 
 
 def xspf_tag(name: str) -> str:
@@ -340,7 +333,6 @@ class MovieStreamScheduler:
         self.playlist_path = self.run_dir / self._build_playlist_filename()
         self.logger = build_logger(self.config.wrapper_log)
         self.mpris = MprisClient(self.config.qdbus_binary, self.logger)
-        self.display = resolve_display(self.config.fullscreen_display)
         self.vlc_process: subprocess.Popen[bytes] | None = None
         # These gates decide whether cleanup() should undo the preload work.
         self.cleanup_preloaded_vlc_on_exit = False
@@ -409,9 +401,8 @@ class MovieStreamScheduler:
         require_executable(self.config.vlc_binary, label="VLC binary")
         require_executable(self.config.qdbus_binary, label="qdbus6 binary")
         require_command_available(FFMPEG_BINARY, label="ffmpeg")
+        require_command_available(FFPROBE_BINARY, label="ffprobe")
         require_command_available(FC_MATCH_BINARY, label="fc-match")
-        if self.inputs.music_path is not None:
-            require_command_available(FFPROBE_BINARY, label="ffprobe")
 
         if self.inputs.start_at is not None and self.inputs.start_at.timestamp() <= time.time():
             raise SchedulerError(
@@ -445,7 +436,8 @@ class MovieStreamScheduler:
             self.inputs.movie_path,
             self.inputs.movie_path.stem,
             track_id=1,
-            subtitle_track=self.config.subtitle_track,
+            subtitle_track_id=self.resolve_vlc_subtitle_track_id(),
+            disable_subtitles=self.config.subtitle_track == 0,
         )
 
         extension = ET.SubElement(
@@ -470,7 +462,8 @@ class MovieStreamScheduler:
         title: str,
         *,
         track_id: int,
-        subtitle_track: int | None = None,
+        subtitle_track_id: int | None = None,
+        disable_subtitles: bool = False,
     ) -> None:
         track = ET.SubElement(track_list, xspf_tag("track"))
         ET.SubElement(track, xspf_tag("location")).text = media_path.resolve().as_uri()
@@ -483,8 +476,36 @@ class MovieStreamScheduler:
         )
         ET.SubElement(extension, vlc_tag("id")).text = str(track_id)
 
-        if subtitle_track is not None:
-            ET.SubElement(extension, vlc_tag("option")).text = f"sub-track={subtitle_track}"
+        if disable_subtitles:
+            ET.SubElement(extension, vlc_tag("option")).text = "sub-track=0"
+        elif subtitle_track_id is not None:
+            ET.SubElement(extension, vlc_tag("option")).text = f"sub-track-id={subtitle_track_id}"
+
+    def resolve_vlc_subtitle_track_id(self) -> int | None:
+        if self.config.subtitle_track == 0:
+            return None
+
+        subtitle_streams = probe_subtitle_streams(self.inputs.movie_path)
+        desired_track = self.config.subtitle_track
+        if desired_track > len(subtitle_streams):
+            available = ", ".join(
+                f"{index + 1}:{stream.language or 'und'}"
+                for index, stream in enumerate(subtitle_streams)
+            ) or "<none>"
+            raise SchedulerError(
+                "Configured subtitle track does not exist for the selected movie. "
+                f"Requested subtitle track {desired_track}, but only {len(subtitle_streams)} "
+                f"subtitle stream(s) were found. Available subtitle tracks: {available}"
+            )
+
+        stream = subtitle_streams[desired_track - 1]
+        self.logger.info(
+            "Mapped configured subtitle track %s to VLC subtitle stream id %s (%s)",
+            desired_track,
+            stream.stream_index,
+            stream.language or "und",
+        )
+        return stream.stream_index
 
     def ensure_vlc_not_running(self) -> None:
         if self.mpris.available():
@@ -524,14 +545,19 @@ class MovieStreamScheduler:
             )
         else:
             print("VLC preload at immediate launch")
+            print(
+                "Minimum required pre-start window: "
+                f"{self.inputs.minimum_prestart_window_seconds}s"
+            )
+            if self.inputs.actual_prestart_window_seconds is not None:
+                print(
+                    "Actual available pre-start window: "
+                    f"{self.inputs.actual_prestart_window_seconds:.3f}s"
+                )
             print(f"Playlist start at {self.inputs.start_at:%Y-%m-%d %H:%M:%S}")
             assert movie_start_at is not None
             print(f"Movie start at {movie_start_at:%Y-%m-%d %H:%M:%S}")
-        print(
-            f"Fullscreen display: {self.display.name} "
-            f"(index {self.display.index}, geometry "
-            f"{self.display.x},{self.display.y} {self.display.width}x{self.display.height})"
-        )
+        print("Fullscreen display targeting: disabled (VLC may open on any monitor)")
         self.logger.info("Launching VLC immediately")
         if self.inputs.start_at is None:
             self.logger.info("Immediate playback requested")
@@ -540,6 +566,15 @@ class MovieStreamScheduler:
                 "Scheduled playback trigger for %s",
                 self.inputs.start_at.strftime("%Y-%m-%d %H:%M:%S"),
             )
+            self.logger.info(
+                "Minimum required pre-start window: %ss",
+                self.inputs.minimum_prestart_window_seconds,
+            )
+            if self.inputs.actual_prestart_window_seconds is not None:
+                self.logger.info(
+                    "Actual available pre-start window before the countdown begins: %.3fs",
+                    self.inputs.actual_prestart_window_seconds,
+                )
             assert movie_start_at is not None
             self.logger.info(
                 "Movie playback will begin at %s after a %s countdown",
@@ -558,19 +593,17 @@ class MovieStreamScheduler:
                 format_duration_precise(audio_plan.start_delay),
                 format_duration_precise(audio_plan.trim_start),
             )
+        self.logger.info(
+            "Fullscreen display targeting is disabled; configured display %r is ignored",
+            self.config.fullscreen_display,
+        )
 
     def launch_vlc(self) -> None:
         self.config.vlc_log.parent.mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ, QT_QPA_PLATFORM="xcb")
         command = [
             str(self.config.vlc_binary),
             "--dbus",
-            "--vout",
-            "xcb_x11",
-            f"--video-x={self.display.x}",
-            f"--video-y={self.display.y}",
             "--fullscreen",
-            f"--qt-fullscreen-screennumber={self.display.index}",
             str(self.playlist_path),
         ]
 
@@ -580,7 +613,6 @@ class MovieStreamScheduler:
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
-                env=env,
                 start_new_session=True,
             )
 
@@ -816,8 +848,12 @@ def resolve_countdown_cache_path(
         suffix = f"_music_{build_music_cache_key(music_path)}"
     return cache_dir / (
         f"countdown_{format_countdown_filename_token(countdown_seconds)}"
-        f"_{countdown_resolution.text}_{COUNTDOWN_TARGET_FPS}fps{suffix}{extension}"
+        f"_{countdown_resolution.text}_lowfps{suffix}{extension}"
     )
+
+
+def countdown_framerate_text(countdown_seconds: int) -> str:
+    return f"{countdown_seconds + 1}/{countdown_seconds}"
 
 
 def derive_movie_timed_countdown(
@@ -909,7 +945,7 @@ def resolve_movie_start(
         raise SchedulerError(
             "The requested movie start does not leave enough time for the full countdown. "
             f"The countdown is currently set to {format_countdown_mmss(countdown_seconds)}. "
-            f"The estimated render allowance is {render_allowance_seconds} seconds. "
+            f"The minimum required pre-start window is {render_allowance_seconds} seconds. "
             "When you ran the command, the earliest movie-start time that would have worked was "
             f"{soonest_movie_start:%Y-%m-%d %H:%M:%S}. "
             "Choose a later movie start, reuse an existing cached countdown, shorten the "
@@ -996,39 +1032,6 @@ def build_logger(path: Path) -> logging.Logger:
     logger.addHandler(console_handler)
 
     return logger
-
-
-def resolve_display(display_name: str) -> Display:
-    qInstallMessageHandler(lambda *_args: None)
-    app = QGuiApplication.instance()
-    if app is None:
-        app = QGuiApplication([])
-    assert isinstance(app, QGuiApplication)
-    # Resolve once through Qt so VLC can be pointed at a stable display geometry.
-    displays = [
-        Display(
-            index=index,
-            name=screen.name(),
-            x=screen.geometry().x(),
-            y=screen.geometry().y(),
-            width=screen.geometry().width(),
-            height=screen.geometry().height(),
-        )
-        for index, screen in enumerate(app.screens())
-    ]
-
-    if not displays:
-        raise SchedulerError("Qt did not report any displays.")
-
-    for display in displays:
-        if display.name == display_name:
-            return display
-
-    available = ", ".join(display.name for display in displays)
-    raise SchedulerError(
-        f"Configured fullscreen_display {display_name!r} was not found. "
-        f"Available displays: {available}"
-    )
 
 
 def wait_until(target_epoch: float) -> None:
@@ -1172,6 +1175,52 @@ def probe_audio_stream_info(media_path: Path) -> AudioStreamInfo:
         channels=channels,
         channel_layout=str(channel_layout) if channel_layout else None,
     )
+
+
+def probe_subtitle_streams(media_path: Path) -> list[SubtitleStreamInfo]:
+    command = [
+        FFPROBE_BINARY,
+        "-v",
+        "error",
+        "-select_streams",
+        "s",
+        "-show_entries",
+        "stream=index:stream_tags=language",
+        "-of",
+        "json",
+        str(media_path),
+    ]
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        raise SchedulerError(
+            f"Failed to probe subtitle streams: {stderr or 'ffprobe returned a non-zero exit code.'}"
+        )
+
+    try:
+        payload = json.loads(result.stdout)
+        raw_streams = payload.get("streams", [])
+        streams = [
+            SubtitleStreamInfo(
+                stream_index=int(stream["index"]),
+                language=str(tags["language"]) if isinstance((tags := stream.get("tags")), dict) and "language" in tags else None,
+            )
+            for stream in raw_streams
+        ]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SchedulerError("Failed to parse subtitle stream info from ffprobe output.") from exc
+
+    if not streams:
+        raise SchedulerError(
+            "The selected movie does not contain any subtitle streams, so a subtitle track cannot be selected."
+        )
+    return streams
 
 
 def resolve_audio_channel_layout(audio_info: AudioStreamInfo) -> str:
@@ -1417,15 +1466,16 @@ def build_countdown_video(
     background = render_background_frame(background_path, resolution, logger)
     step_count = countdown_seconds + 1
     total_frames = step_count
-    framerate = str(COUNTDOWN_TARGET_FPS)
+    framerate = countdown_framerate_text(countdown_seconds)
     label_span_width = (plan.right_x0 + 2 * plan.slot_width) - plan.left_x0
 
     logger.info(
-        "Rendering countdown video with %s over %s at %s fps (%s frames) to %s",
+        "Rendering countdown video with %s over %s at %s fps (%s frames over %ss) to %s",
         font_pattern,
         background_path.name,
         framerate,
         total_frames,
+        countdown_seconds,
         output_path,
     )
     with tempfile.TemporaryDirectory(prefix=f"{APP_NAME}_countdown_") as tmpdir_str:
@@ -1472,14 +1522,12 @@ def build_countdown_video(
             "-i",
             "-",
             "-filter_complex",
-            (
-                f"[0:v]trim=duration={countdown_seconds:.6f},setpts=PTS-STARTPTS[bg];"
-                f"[1:v]setpts=PTS-STARTPTS[fg];"
-                f"[bg][fg]overlay={plan.left_x0}:{plan.y0}:format=auto,format=rgb24[out]"
-            ),
+            f"[0:v][1:v]overlay={plan.left_x0}:{plan.y0}:format=auto,format=rgb24[out]",
             "-map",
             "[out]",
             "-an",
+            "-frames:v",
+            str(total_frames),
             "-c:v",
             COUNTDOWN_VIDEO_CODEC,
             "-preset",
@@ -1675,11 +1723,13 @@ def parse_args() -> argparse.Namespace:
         metavar="HH:MM[:SS]",
         help=(
             "Local time when the movie should begin. The countdown ends exactly at this time.\n"
-            "If --countdown-length is omitted, the countdown length is derived from the remaining\n"
-            "time minus a conservative render allowance that scales with countdown length.\n"
+            "If --countdown-length is omitted and --music is also supplied, the countdown length\n"
+            "is derived from the remaining time minus a conservative render allowance that\n"
+            "scales with countdown length.\n"
+            "Otherwise the normal default countdown length is used.\n"
             f"The minimum reserved render window is {COUNTDOWN_RENDER_ALLOWANCE_SECONDS} seconds.\n"
-            "If --music is also supplied, the full music track must still fit inside that derived\n"
-            "countdown unless you pass --force."
+            "If music is being auto-expanded to fill the gap, the full music track must still fit\n"
+            "inside that derived countdown unless you pass --force."
         ),
     )
     countdown_group = parser.add_argument_group(
@@ -1693,8 +1743,9 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Countdown duration. Allowed range: 00:30 to 59:59.\n"
             "Default: 05:00. If --music is supplied in immediate mode, it becomes the music\n"
-            "duration plus a 1 second buffer, rounded up. If --movie-start is supplied,\n"
-            "the default becomes the remaining time until the movie minus the estimated render allowance."
+            "duration plus a 1 second buffer, rounded up. If both --movie-start and --music are\n"
+            "supplied, the default becomes the remaining time until the movie minus the estimated\n"
+            "render allowance."
         ),
     )
     countdown_group.add_argument(
@@ -1737,14 +1788,17 @@ def parse_args() -> argparse.Namespace:
         "--subtitle-track",
         type=int,
         metavar="N",
-        help="Subtitle track number to select for the movie entry.",
+        help="1-based subtitle stream number within the movie file; 0 disables subtitle selection.",
     )
     vlc_group.add_argument(
         "--display",
         "--screen",
         dest="display",
         metavar="NAME",
-        help="Fullscreen display name, for example DP-1.",
+        help=(
+            "Compatibility override for the configured display name.\n"
+            "Display targeting is currently disabled, so this setting is accepted but ignored."
+        ),
     )
     return parser.parse_args()
 
@@ -1757,17 +1811,17 @@ def main() -> int:
         subtitle_track=args.subtitle_track,
     )
     current_time = datetime.now()
+    render_allowance_seconds = 0
+    actual_prestart_window_seconds: float | None = None
     try:
-        if args.movie_start is not None and args.countdown_length is None:
+        if args.movie_start is not None and args.countdown_length is None and args.music is not None:
             minimum_countdown_seconds = (
                 derive_countdown_seconds(args.music, None)
-                if args.music is not None
-                else COUNTDOWN_MIN_SECONDS
             )
             countdown_seconds, start_at = derive_movie_timed_countdown(
                 args.movie_start,
                 minimum_countdown_seconds=minimum_countdown_seconds,
-                has_music=args.music is not None,
+                has_music=True,
                 allow_music_truncation=args.force,
                 now=current_time,
             )
@@ -1801,6 +1855,8 @@ def main() -> int:
                 )
             else:
                 start_at = None
+            if start_at is not None:
+                actual_prestart_window_seconds = (start_at - current_time).total_seconds()
         validate_music_fits_countdown(
             args.music,
             countdown_seconds,
@@ -1820,6 +1876,8 @@ def main() -> int:
             music_path=args.music,
             regenerate_countdown_video=args.rebuild_countdown_cache,
             force_music_truncation=args.force,
+            minimum_prestart_window_seconds=render_allowance_seconds,
+            actual_prestart_window_seconds=actual_prestart_window_seconds,
         ),
         script_dir=script_dir,
     )

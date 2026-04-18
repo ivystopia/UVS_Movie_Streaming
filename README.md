@@ -24,7 +24,7 @@ The current countdown generator uses:
 - white fixed-slot digits with a black outline
 - separate `mm` and `ss` blocks, with no colon
 - one unique frame per visible countdown second
-- `countdown_seconds + 1` frames at a literal `1 fps`
+- `countdown_seconds + 1` frames spread across the requested countdown duration at a low rational frame rate
 - `libx264rgb -preset ultrafast -crf 0`
 
 This keeps generation fast while still including `00:00` as the terminal frame.
@@ -96,6 +96,12 @@ Optional VLC overrides:
 - `--subtitle-track N`
 - `--display NAME`
 
+`--display` is currently accepted for compatibility only. The script no longer tries to force VLC
+onto a specific monitor, because that was not reliable under the target Plasma Wayland session.
+
+`--subtitle-track` is 1-based within the movie file's subtitle streams. `1` means the first
+subtitle stream in the file. `0` disables subtitle selection.
+
 The built-in help is the source of truth for exact option wording:
 
 ```bash
@@ -128,12 +134,14 @@ Make the movie begin at an exact local time with an explicit 5-minute countdown:
   --countdown-length 05:00
 ```
 
-Let the script derive the countdown length automatically from the remaining time until movie start:
+Let the script derive the countdown length automatically from the remaining time until movie start.
+This only happens when `--music` is also supplied:
 
 ```bash
 ./schedule_uvs_movie_stream.py \
   --video /path/to/movie.mkv \
-  --movie-start 20:00
+  --movie-start 20:00 \
+  --music /path/to/music.flac
 ```
 
 Attach music whose end should line up with the end of the countdown:
@@ -160,8 +168,10 @@ Force regeneration of a cached countdown:
 - If a requested `--countdown-start` or `--movie-start` has already passed today, the script assumes you mean tomorrow.
 - `--countdown-start` means the countdown begins at that exact second.
 - `--movie-start` means the movie begins at that exact second.
-- If `--movie-start` is used without `--countdown-length`, the script derives the countdown length from the remaining time minus a conservative render allowance.
+- If `--movie-start` is used without `--countdown-length`, the script keeps the normal default countdown length unless `--music` is also supplied.
+- If both `--movie-start` and `--music` are used without `--countdown-length`, the script derives the countdown length from the remaining time minus a conservative render allowance.
 - If the requested movie start does not leave enough time for generation plus the full countdown, the script fails early and reports the earliest workable movie-start time.
+- For scheduled runs, the startup summary reports both the minimum required pre-start window and the actual available window before the countdown begins.
 
 ## Music rules
 
@@ -181,7 +191,7 @@ Force regeneration of a cached countdown:
 
 ## Performance
 
-The current static `1 fps` generator scales approximately linearly with countdown length.
+The current static low-frame-rate generator scales approximately linearly with countdown length.
 
 Measured on this machine at `1920x1080`, no music:
 
@@ -207,4 +217,5 @@ Run local checks with:
 ./lint.sh
 ```
 
-That helper runs Python compilation, `flake8`, and `pyright` inside the configured virtualenv.
+That helper runs Python compilation, `flake8`, `mypy`, and `pyright` inside the configured
+virtualenv.

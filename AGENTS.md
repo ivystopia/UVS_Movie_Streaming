@@ -36,6 +36,8 @@ The scheduler currently:
 
 If neither `--countdown-start` nor `--movie-start` is supplied, the script launches VLC and leaves playback to begin immediately.
 
+VLC is launched in fullscreen, but the script does not currently force a specific monitor.
+
 ## CLI contract
 
 Required:
@@ -65,14 +67,20 @@ Compatibility aliases still accepted:
 - `--screen` for `--display`
 - `--regenerate-countdown-video` for `--rebuild-countdown-cache`
 
+The `--display` / `fullscreen_display` setting is compatibility-only input and is currently ignored.
+`--subtitle-track` is a 1-based subtitle-stream ordinal within the movie file. The launcher maps
+that ordinal to VLC's `sub-track-id` using `ffprobe`.
+
 ## Scheduling semantics
 
 - All wall-clock times are local time.
 - If a requested wall-clock time has already passed today, the script rolls it to tomorrow.
 - `--countdown-start` means the countdown begins at that exact second.
 - `--movie-start` means the movie begins at that exact second.
-- If `--movie-start` is supplied without `--countdown-length`, the script derives the countdown length from the time remaining until movie start minus an estimated render allowance.
+- If `--movie-start` is supplied without `--countdown-length`, the script keeps the normal default countdown length unless `--music` is also supplied.
+- If both `--movie-start` and `--music` are supplied without `--countdown-length`, the script derives the countdown length from the time remaining until movie start minus an estimated render allowance.
 - If `--movie-start` does not leave enough future time for generation plus countdown playback, the script fails early and reports the earliest workable movie-start time.
+- For scheduled runs, the startup summary reports both the minimum required pre-start window and the actual available window before the countdown begins.
 
 ## Countdown generation
 
@@ -91,7 +99,7 @@ Current generator behavior:
 - configurable font resolved via `fc-match`
 - white fixed-slot digits with black outline
 - separate `mm` and `ss` blocks, no colon
-- `countdown_seconds + 1` frames at a literal `1 fps`
+- `countdown_seconds + 1` frames spread across the requested countdown duration at a low rational frame rate
 - `libx264rgb -preset ultrafast -crf 0`
 
 Current countdown constraints:
@@ -131,6 +139,9 @@ Music behavior:
 - `logging.vlc_log`
 - `tools.vlc_binary`
 - `tools.qdbus_binary`
+
+`playback.fullscreen_display` remains in the config for compatibility, but the launcher currently
+does not enforce monitor placement.
 
 ## Tooling
 

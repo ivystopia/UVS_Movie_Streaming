@@ -1,10 +1,10 @@
 # Settings that affect when and how playback is started.
 [playback]
 
-# VLC target display name as reported to Qt on this desktop session.
+# Reserved for future output targeting; currently ignored.
 fullscreen_display = "DP-1"
 
-# VLC subtitle track number for the movie entry.
+# 1-based subtitle stream number within the movie file; 0 disables subtitles.
 subtitle_track = 1
 
 # Files the script reads or generates relative to its own directory.
@@ -17,7 +17,7 @@ static_dirname = "static"
 cache_dirname = "cache"
 
 # Cache filename used for the default countdown duration at the default resolution.
-countdown_filename = "5min_countdown_1fps.mkv"
+countdown_filename = "5min_countdown_lowfps.mkv"
 
 # User-supplied background image used when generating countdown videos.
 countdown_background = "background.svg"

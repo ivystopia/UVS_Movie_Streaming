@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "VLC scheduler for a countdown video followed by a feature film"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-dependencies = ["Pillow", "PyQt6"]
+dependencies = ["Pillow"]
 
 [project.optional-dependencies]
 dev = ["flake8", "mypy", "pyright"]
