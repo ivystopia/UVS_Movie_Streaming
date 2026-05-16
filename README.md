@@ -99,8 +99,9 @@ Optional VLC overrides:
 `--display` is currently accepted for compatibility only. The script no longer tries to force VLC
 onto a specific monitor, because that was not reliable under the target Plasma Wayland session.
 
-`--subtitle-track` is 1-based within the movie file's subtitle streams. `1` means the first
-subtitle stream in the file. `0` disables subtitle selection.
+`--subtitle-track 1` prefers the first subtitle stream titled exactly `English`, falling back to
+the first subtitle stream if no exact match exists. `0` disables subtitle selection. Values above
+`1` select that 1-based subtitle stream number within the movie file.
 
 The built-in help is the source of truth for exact option wording:
 

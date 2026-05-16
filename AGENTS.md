@@ -68,8 +68,10 @@ Compatibility aliases still accepted:
 - `--regenerate-countdown-video` for `--rebuild-countdown-cache`
 
 The `--display` / `fullscreen_display` setting is compatibility-only input and is currently ignored.
-`--subtitle-track` is a 1-based subtitle-stream ordinal within the movie file. The launcher maps
-that ordinal to VLC's `sub-track-id` using `ffprobe`.
+`--subtitle-track 1` prefers the first subtitle stream titled exactly `English`, falling back to
+the first subtitle stream if no exact match exists. `0` disables subtitle selection. Values above
+`1` are 1-based subtitle-stream ordinals within the movie file. The launcher maps the selected
+stream to VLC's `sub-track-id` using `ffprobe`.
 
 ## Scheduling semantics
 

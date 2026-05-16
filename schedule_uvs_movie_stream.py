@@ -187,6 +187,7 @@ class CountdownAudioPlan:
 class SubtitleStreamInfo:
     stream_index: int
     language: str | None
+    title: str | None
 
 
 def xspf_tag(name: str) -> str:
@@ -517,7 +518,7 @@ class MovieStreamScheduler:
         desired_track = self.config.subtitle_track
         if desired_track > len(subtitle_streams):
             available = ", ".join(
-                f"{index + 1}:{stream.language or 'und'}"
+                f"{index + 1}:{format_subtitle_stream_label(stream)}"
                 for index, stream in enumerate(subtitle_streams)
             ) or "<none>"
             raise SchedulerError(
@@ -526,12 +527,22 @@ class MovieStreamScheduler:
                 f"subtitle stream(s) were found. Available subtitle tracks: {available}"
             )
 
-        stream = subtitle_streams[desired_track - 1]
+        if desired_track == 1:
+            stream = choose_default_subtitle_stream(subtitle_streams)
+            selection_reason = (
+                "preferred exact English title"
+                if is_exact_english_subtitle(stream)
+                else "fallback first track"
+            )
+        else:
+            stream = subtitle_streams[desired_track - 1]
+            selection_reason = f"configured ordinal {desired_track}"
         self.logger.info(
-            "Mapped configured subtitle track %s to VLC subtitle stream id %s (%s)",
+            "Mapped configured subtitle track %s to VLC subtitle stream id %s (%s; %s)",
             desired_track,
             stream.stream_index,
-            stream.language or "und",
+            format_subtitle_stream_label(stream),
+            selection_reason,
         )
         return stream.stream_index
 
@@ -1236,7 +1247,7 @@ def probe_subtitle_streams(media_path: Path) -> list[SubtitleStreamInfo]:
         "-select_streams",
         "s",
         "-show_entries",
-        "stream=index:stream_tags=language",
+        "stream=index:stream_tags=language,title",
         "-of",
         "json",
         str(media_path),
@@ -1260,7 +1271,8 @@ def probe_subtitle_streams(media_path: Path) -> list[SubtitleStreamInfo]:
         streams = [
             SubtitleStreamInfo(
                 stream_index=int(stream["index"]),
-                language=str(tags["language"]) if isinstance((tags := stream.get("tags")), dict) and "language" in tags else None,
+                language=extract_optional_tag(stream, "language"),
+                title=extract_optional_tag(stream, "title"),
             )
             for stream in raw_streams
         ]
@@ -1272,6 +1284,33 @@ def probe_subtitle_streams(media_path: Path) -> list[SubtitleStreamInfo]:
             "The selected movie does not contain any subtitle streams, so a subtitle track cannot be selected."
         )
     return streams
+
+
+def extract_optional_tag(stream: dict[str, Any], tag_name: str) -> str | None:
+    tags = stream.get("tags")
+    if not isinstance(tags, dict):
+        return None
+    value = tags.get(tag_name)
+    return str(value) if value else None
+
+
+def is_exact_english_subtitle(stream: SubtitleStreamInfo) -> bool:
+    return stream.title is not None and stream.title.strip().casefold() == "english"
+
+
+def choose_default_subtitle_stream(
+    streams: list[SubtitleStreamInfo],
+) -> SubtitleStreamInfo:
+    for stream in streams:
+        if is_exact_english_subtitle(stream):
+            return stream
+    return streams[0]
+
+
+def format_subtitle_stream_label(stream: SubtitleStreamInfo) -> str:
+    title = stream.title or "<untitled>"
+    language = stream.language or "und"
+    return f"{title}/{language}"
 
 
 def resolve_audio_channel_layout(audio_info: AudioStreamInfo) -> str:
@@ -1839,7 +1878,11 @@ def parse_args() -> argparse.Namespace:
         "--subtitle-track",
         type=int,
         metavar="N",
-        help="1-based subtitle stream number within the movie file; 0 disables subtitle selection.",
+        help=(
+            "Subtitle selection. 0 disables subtitles. 1 prefers the first stream titled exactly "
+            "'English', falling back to the first subtitle stream. Values above 1 select that "
+            "1-based subtitle stream number within the movie file."
+        ),
     )
     vlc_group.add_argument(
         "--display",
