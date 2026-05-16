@@ -28,7 +28,7 @@ The scheduler currently:
 2. validates the movie path and countdown request
 3. generates or reuses a cached countdown video under `cache/`
 4. builds a temporary two-item XSPF playlist
-5. launches VLC immediately
+5. launches VLC immediately, adding VLC's `--start-paused` option for scheduled runs
 6. waits for `org.mpris.MediaPlayer2.vlc` over `qdbus6`
 7. pauses and rewinds the countdown to position `0`
 8. waits until the target start time, if one was requested

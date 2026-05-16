@@ -238,6 +238,30 @@ class MprisClient:
                 "See the wrapper and VLC logs for details."
             )
 
+    def play_pause(self) -> None:
+        result = self._call(
+            "org.mpris.MediaPlayer2.Player.PlayPause",
+            capture_output=False,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            self.logger.error(
+                "Failed to toggle playback: %s",
+                stderr or "<no stderr>",
+            )
+            raise SchedulerError(
+                "Failed to trigger playback. VLC was left running for inspection. "
+                "See the wrapper and VLC logs for details."
+            )
+
+    def wait_until_playing(self, timeout_seconds: float) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if self.playback_status() == "Playing":
+                return True
+            time.sleep(0.05)
+        return self.playback_status() == "Playing"
+
     def pause(self) -> None:
         result = self._call(
             "org.mpris.MediaPlayer2.Player.Pause",
@@ -364,12 +388,16 @@ class MovieStreamScheduler:
         self.logger.info("Detected %s", MPRIS_SERVICE)
         # Put VLC into a deterministic paused-at-zero preload state before waiting.
         self.prepare_preloaded_countdown()
+        self.logger.info(
+            "Countdown preloaded; waiting until %s",
+            self.inputs.start_at.strftime("%Y-%m-%d %H:%M:%S"),
+        )
         wait_until(self.inputs.start_at.timestamp())
         self.logger.info("Reached playback trigger time")
 
         self.cleanup_preloaded_vlc_on_exit = False
         self.cleanup_run_dir_on_exit = False
-        self.mpris.play()
+        self.trigger_preloaded_playback()
         self.logger.info("Playback trigger sent successfully")
         print(f"Playback triggered at {datetime.now():%Y-%m-%d %H:%M:%S.%f}"[:-3])
         return 0
@@ -604,8 +632,10 @@ class MovieStreamScheduler:
             str(self.config.vlc_binary),
             "--dbus",
             "--fullscreen",
-            str(self.playlist_path),
         ]
+        if self.inputs.start_at is not None:
+            command.append("--start-paused")
+        command.append(str(self.playlist_path))
 
         with self.config.vlc_log.open("w", encoding="utf-8") as log_handle:
             self.vlc_process = subprocess.Popen(
@@ -635,6 +665,27 @@ class MovieStreamScheduler:
         status = self.mpris.playback_status() or "<unknown>"
         position = self.mpris.position()
         self.logger.info("Prepared preload state: status=%s position=%s", status, position)
+
+    def trigger_preloaded_playback(self) -> None:
+        self.mpris.play()
+        if self.mpris.wait_until_playing(0.75):
+            return
+
+        status = self.mpris.playback_status() or "<unknown>"
+        self.logger.warning(
+            "MPRIS Play returned but VLC status is %s; trying PlayPause fallback",
+            status,
+        )
+        self.mpris.play_pause()
+        if self.mpris.wait_until_playing(0.75):
+            return
+
+        status = self.mpris.playback_status() or "<unknown>"
+        raise SchedulerError(
+            "VLC did not start playback after the scheduled trigger. "
+            f"Last reported playback status was {status!r}. "
+            "VLC was left running for inspection."
+        )
 
     def _install_signal_handlers(self) -> None:
         def handler(signum: int, _frame: object) -> None:

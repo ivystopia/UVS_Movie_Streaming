@@ -11,8 +11,8 @@ At runtime the script:
 1. loads `config.toml`
 2. generates or reuses a cached countdown video
 3. builds a temporary two-item VLC playlist
-4. launches VLC
-5. preloads the countdown in a paused-at-zero state through MPRIS
+4. launches VLC, using VLC's start-paused mode for scheduled runs
+5. preloads the countdown in a paused-at-zero state through MPRIS for scheduled runs
 6. starts playback at the requested time, or immediately if no start time was requested
 
 ## Countdown format
